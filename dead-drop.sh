@@ -307,12 +307,54 @@ open_path_prompt() {
   open_message_file "$file"
 }
 
+show_decryption_failure() {
+  local exit_status=$1 status_file=$2 error_file=$3 line safe_line shown=0 status_summary
+  clear_screen
+  box_open 'Message could not be decrypted'
+  if grep -Eiq 'BAD_PASSPHRASE|Bad session key' "$status_file" "$error_file"; then
+    box_line 'GPG rejected the passphrase or found damaged encrypted data.'
+    box_line 'Check capitalization, spaces, and keyboard layout.'
+    box_line 'If the passphrase is correct, ask for a fresh copy of the file.'
+  elif grep -Eiq 'NODATA|no valid OpenPGP data|not an encrypted message' "$status_file" "$error_file"; then
+    box_line 'This file does not contain valid GPG encrypted data.'
+    box_line 'It may be the wrong file or an incomplete copy.'
+  elif grep -Eiq 'UNSUPPORTED_ALGORITHM|unsupported algorithm' "$status_file" "$error_file"; then
+    box_line 'This GPG file uses an unsupported encryption algorithm.'
+    box_line 'Try a newer GnuPG version or request a compatible copy.'
+  elif grep -Eiq 'NO_SECKEY|No secret key' "$status_file" "$error_file"; then
+    box_line 'This file requires a GPG private key, not a message passphrase.'
+    box_line 'Open a symmetric Dead Drop message or use the required key.'
+  elif grep -Eiq 'Permission denied|cannot open|can.t open|No such file' "$status_file" "$error_file"; then
+    box_line 'GPG could not read the selected file.'
+    box_line 'Check that it still exists and that you have read permission.'
+  else
+    box_line 'GPG could not authenticate or read the encrypted data.'
+    box_line 'Check the passphrase, file integrity, and GnuPG installation.'
+  fi
+  box_line "GPG exit status: $exit_status"
+  status_summary=$(sed -n 's/^\[GNUPG:\] \([A-Z_]*\).*/\1/p' "$status_file" | tail -n 3 | tr '\n' ' ')
+  [[ -z "$status_summary" ]] || box_wrap "GPG status: $status_summary"
+  while IFS= read -r line; do
+    case "$line" in
+      'gpg: AES'*' encrypted data'|'gpg: encrypted with '*passphrase*) continue ;;
+    esac
+    safe_line=$(printf '%s' "$line" | LC_ALL=C tr -cd '\11\12\15\40-\176')
+    [[ -n "$safe_line" ]] || continue
+    box_wrap "GPG detail: $safe_line"
+    ((shown+=1))
+    ((shown >= 3)) && break
+  done < "$error_file"
+  box_close
+}
+
 open_message_file() {
-  local file=$1 decrypted header expiry now passphrase=''
+  local file=$1 decrypted error_tmp status_tmp header expiry now passphrase='' gpg_status
   local message_line
   if ! require_gpg; then pause; return; fi
   decrypted=$(secure_temp) || { die 'Could not create a secure temporary file.'; pause; return; }
-  TEMP_FILES+=("$decrypted")
+  error_tmp=$(secure_temp) || { rm -f "$decrypted"; die 'Could not create a secure temporary file.'; pause; return; }
+  status_tmp=$(secure_temp) || { rm -f "$decrypted" "$error_tmp"; die 'Could not create a secure temporary file.'; pause; return; }
+  TEMP_FILES+=("$decrypted" "$error_tmp" "$status_tmp")
   clear_screen
   box_open 'Open a message'
   box_wrap "File: $file"
@@ -326,18 +368,15 @@ open_message_file() {
     return
   fi
   printf '\n'
-  if ! gpg --batch --pinentry-mode loopback --passphrase-fd 3 --no-symkey-cache \
-      --decrypt --output "$decrypted" "$file" 3<<<"$passphrase"; then
-    unset passphrase
-    clear_screen
-    box_open 'Could not open message'
-    box_line 'The file could not be decrypted with that passphrase.'
-    box_line 'Confirm that it is a Dead Drop message and try again.'
-    box_close
+  gpg --batch --pinentry-mode loopback --passphrase-fd 3 --status-fd 4 --no-symkey-cache \
+    --decrypt --output "$decrypted" "$file" 3<<<"$passphrase" 4>"$status_tmp" 2>"$error_tmp"
+  gpg_status=$?
+  unset passphrase
+  if ((gpg_status != 0)); then
+    show_decryption_failure "$gpg_status" "$status_tmp" "$error_tmp"
     pause
     return
   fi
-  unset passphrase
   IFS= read -r header < "$decrypted" || true
   if [[ "$header" != 'DEAD-DROP-V1' ]]; then
     clear_screen
