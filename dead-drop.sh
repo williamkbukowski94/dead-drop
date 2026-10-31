@@ -128,7 +128,8 @@ pause() {
 }
 
 create_message() {
-  local choice line expiry expiry_label message_name target encrypted_tmp message_tmp
+  local choice line expiry expiry_label message_name target encrypted_tmp message_tmp name_pattern
+  name_pattern='^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$'
   require_gpg || { pause; return; }
   while true; do
     draw_expiration_menu
@@ -156,7 +157,7 @@ create_message() {
     box_close
     printf '%sMessage name: %s' "$TEXT" "$RESET"
     IFS= read -r message_name || return
-    if [[ "$message_name" =~ ^[A-Za-z0-9][A-Za-z0-9._ -]{0,79}$ ]]; then
+    if [[ "$message_name" =~ $name_pattern ]]; then
       break
     fi
     printf '\n%sThat name is not valid. Try another name.%s\n' "$TEXT" "$RESET"
