@@ -29,7 +29,7 @@ This installs `dropdead` and the `dead-setup` updater into `~/.local/bin`. Add t
 dropdead
 ```
 
-Update the installed program with `dead-setup update`, or remove the commands with `dead-setup uninstall`. This is a per-user install and does not require `sudo`. You can also run `./dead-setup` from a local checkout to install that checkout's version.
+Update the installed program with `dead-setup update`, or remove the commands with `dead-setup uninstall`. For updates, the installer resolves the latest commit on `main` and downloads both program files from that same commit. This is a per-user install and does not require `sudo`. You can also run `./dead-setup` from a local checkout to install that checkout's version.
 
 The menu lets you create, open, and delete saved messages. New messages are stored in `~/.dead-drop/messages` with owner-only directory permissions. Set `DEAD_DROP_DIR` to use a different local vault location. To open a message shared by someone else, choose **Open a message** and enter its file path.
 

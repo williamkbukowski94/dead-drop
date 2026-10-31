@@ -4,11 +4,11 @@ set -euo pipefail
 
 REPOSITORY='williamkbukowski94/dead-drop'
 BRANCH='main'
-RAW_BASE="https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}"
 INSTALL_DIR="${DEAD_DROP_BIN_DIR:-${HOME}/.local/bin}"
 COMMAND_PATH="$INSTALL_DIR/dropdead"
 SETUP_PATH="$INSTALL_DIR/dead-setup"
 TEMP_DIR=''
+SOURCE_REVISION=''
 trap '[[ -z "$TEMP_DIR" ]] || rm -rf "$TEMP_DIR"' EXIT
 
 usage() {
@@ -23,13 +23,38 @@ Set DEAD_DROP_BIN_DIR to choose a different per-user command directory.
 EOF
 }
 
+resolve_revision() {
+  local destination=$1 url
+  url="https://api.github.com/repos/${REPOSITORY}/commits/${BRANCH}?cachebust=$(date +%s)-$$"
+  if command -v curl >/dev/null 2>&1; then
+    curl --fail --silent --show-error --location \
+      --header 'Accept: application/vnd.github+json' \
+      --header 'Cache-Control: no-cache' \
+      --header 'Pragma: no-cache' \
+      "$url" --output "$destination"
+  elif command -v wget >/dev/null 2>&1; then
+    wget --quiet --header='Cache-Control: no-cache' --output-document="$destination" "$url"
+  else
+    printf 'Install curl or wget to resolve the latest Dead Drop version from GitHub.\n' >&2
+    return 1
+  fi
+  SOURCE_REVISION=$(sed -n 's/^[[:space:]]*"sha":[[:space:]]*"\([[:xdigit:]]\{40\}\)".*/\1/p' "$destination" | head -n 1)
+  if [[ ${#SOURCE_REVISION} -ne 40 || "$SOURCE_REVISION" == *[!0-9a-f]* ]]; then
+    printf 'Could not resolve the latest GitHub commit for %s.\n' "$REPOSITORY" >&2
+    return 1
+  fi
+}
+
 download() {
   local name=$1 destination=$2
-  local url="${RAW_BASE}/${name}"
+  local url="https://raw.githubusercontent.com/${REPOSITORY}/${SOURCE_REVISION}/${name}"
   if command -v curl >/dev/null 2>&1; then
-    curl --fail --silent --show-error --location "$url" --output "$destination"
+    curl --fail --silent --show-error --location \
+      --header 'Cache-Control: no-cache' \
+      --header 'Pragma: no-cache' \
+      "$url" --output "$destination"
   elif command -v wget >/dev/null 2>&1; then
-    wget --quiet --output-document="$destination" "$url"
+    wget --quiet --header='Cache-Control: no-cache' --output-document="$destination" "$url"
   else
     printf 'Install curl or wget to download Dead Drop from GitHub.\n' >&2
     return 1
@@ -50,7 +75,8 @@ install_or_update() {
     drop_source="$source_dir/dead-drop.sh"
     setup_source="${BASH_SOURCE[0]}"
   else
-    printf 'Downloading Dead Drop from %s (%s)...\n' "$REPOSITORY" "$BRANCH"
+    resolve_revision "$TEMP_DIR/commit.json"
+    printf 'Downloading Dead Drop from %s at %s...\n' "$REPOSITORY" "$SOURCE_REVISION"
     download dead-drop.sh "$TEMP_DIR/dropdead"
     download dead-setup "$TEMP_DIR/dead-setup"
     drop_source="$TEMP_DIR/dropdead"
