@@ -308,7 +308,7 @@ open_path_prompt() {
 }
 
 open_message_file() {
-  local file=$1 decrypted header expiry now
+  local file=$1 decrypted header expiry now passphrase=''
   local message_line
   if ! require_gpg; then pause; return; fi
   decrypted=$(secure_temp) || { die 'Could not create a secure temporary file.'; pause; return; }
@@ -316,9 +316,19 @@ open_message_file() {
   clear_screen
   box_open 'Open a message'
   box_wrap "File: $file"
-  box_line 'GPG will ask for the message passphrase.'
+  box_line 'Enter the message passphrase below.'
+  box_line 'Your typing will be hidden.'
   box_close
-  if ! gpg --no-symkey-cache --decrypt --output "$decrypted" "$file"; then
+  printf '%sMessage passphrase: %s' "$TEXT" "$RESET"
+  if ! IFS= read -r -s passphrase; then
+    printf '\n'
+    unset passphrase
+    return
+  fi
+  printf '\n'
+  if ! gpg --batch --pinentry-mode loopback --passphrase-fd 3 --no-symkey-cache \
+      --decrypt --output "$decrypted" "$file" 3<<<"$passphrase"; then
+    unset passphrase
     clear_screen
     box_open 'Could not open message'
     box_line 'The file could not be decrypted with that passphrase.'
@@ -327,6 +337,7 @@ open_message_file() {
     pause
     return
   fi
+  unset passphrase
   IFS= read -r header < "$decrypted" || true
   if [[ "$header" != 'DEAD-DROP-V1' ]]; then
     clear_screen
