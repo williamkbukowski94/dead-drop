@@ -17,7 +17,7 @@ chmod +x dead-drop.sh
 
 ## Install as `dropdead`
 
-After the project is published on GitHub, install the latest version for the current user with:
+Install the latest public version for the current user with:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/williamkbukowski94/dead-drop/main/dead-setup | bash
