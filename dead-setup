@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Install, update, or remove Dead Drop in the current user's ~/.local/bin.
+set -euo pipefail
+
+REPOSITORY='williamkbukowski94/dead-drop'
+BRANCH='main'
+RAW_BASE="https://raw.githubusercontent.com/${REPOSITORY}/${BRANCH}"
+INSTALL_DIR="${DEAD_DROP_BIN_DIR:-${HOME}/.local/bin}"
+COMMAND_PATH="$INSTALL_DIR/dropdead"
+SETUP_PATH="$INSTALL_DIR/dead-setup"
+TEMP_DIR=''
+trap '[[ -z "$TEMP_DIR" ]] || rm -rf "$TEMP_DIR"' EXIT
+
+usage() {
+  cat <<'EOF'
+Usage: dead-setup [install|update|uninstall]
+
+install    Install Dead Drop (the default)
+update     Fetch the latest release files from GitHub and replace the install
+uninstall  Remove dropdead and dead-setup from the install directory
+
+Set DEAD_DROP_BIN_DIR to choose a different per-user command directory.
+EOF
+}
+
+download() {
+  local name=$1 destination=$2
+  local url="${RAW_BASE}/${name}"
+  if command -v curl >/dev/null 2>&1; then
+    curl --fail --silent --show-error --location "$url" --output "$destination"
+  elif command -v wget >/dev/null 2>&1; then
+    wget --quiet --output-document="$destination" "$url"
+  else
+    printf 'Install curl or wget to download Dead Drop from GitHub.\n' >&2
+    return 1
+  fi
+}
+
+install_or_update() {
+  local mode=$1 source_dir drop_source setup_source
+  mkdir -p "$INSTALL_DIR"
+  chmod 700 "$INSTALL_DIR" 2>/dev/null || true
+  TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/dead-setup.XXXXXXXX")
+
+  source_dir=''
+  if [[ -f "${BASH_SOURCE[0]:-}" ]]; then
+    source_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+  fi
+  if [[ "$mode" == install && -n "$source_dir" && -f "$source_dir/dead-drop.sh" ]]; then
+    drop_source="$source_dir/dead-drop.sh"
+    setup_source="${BASH_SOURCE[0]}"
+  else
+    printf 'Downloading Dead Drop from %s (%s)...\n' "$REPOSITORY" "$BRANCH"
+    download dead-drop.sh "$TEMP_DIR/dropdead"
+    download dead-setup "$TEMP_DIR/dead-setup"
+    drop_source="$TEMP_DIR/dropdead"
+    setup_source="$TEMP_DIR/dead-setup"
+  fi
+
+  [[ -s "$drop_source" && -s "$setup_source" ]] || {
+    printf 'Download failed or the installation files are missing.\n' >&2
+    return 1
+  }
+  install -m 755 "$drop_source" "$TEMP_DIR/dropdead.new"
+  install -m 755 "$setup_source" "$TEMP_DIR/dead-setup.new"
+  mv -f "$TEMP_DIR/dropdead.new" "$COMMAND_PATH"
+  mv -f "$TEMP_DIR/dead-setup.new" "$SETUP_PATH"
+  rm -rf "$TEMP_DIR"
+  TEMP_DIR=''
+
+  printf '\nDead Drop is installed. Run: dropdead\n'
+  case ":${PATH}:" in
+    *":$INSTALL_DIR:"*) ;;
+    *) printf 'Add this directory to your PATH to run it from any terminal:\n  %s\n' "$INSTALL_DIR" ;;
+  esac
+  printf 'Update later with: dead-setup update\n'
+}
+
+uninstall() {
+  rm -f -- "$COMMAND_PATH" "$SETUP_PATH"
+  printf 'Removed Dead Drop commands from %s\n' "$INSTALL_DIR"
+  printf 'Saved encrypted messages in ~/.dead-drop/messages were left untouched.\n'
+}
+
+main() {
+  local action=${1:-install}
+  case "$action" in
+    install|update) install_or_update "$action" ;;
+    uninstall) uninstall ;;
+    -h|--help|help) usage ;;
+    *) usage >&2; exit 2 ;;
+  esac
+}
+
+main "$@"
