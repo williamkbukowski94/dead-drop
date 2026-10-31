@@ -33,6 +33,8 @@ Update the installed program with `dead-setup update`, or remove the commands wi
 
 The menu lets you create, open, and delete saved messages. New messages are stored in `~/.dead-drop/messages` with owner-only directory permissions. Set `DEAD_DROP_DIR` to use a different local vault location. To open a message shared by someone else, choose **Open a message** and enter its file path.
 
+The terminal interface uses a consistent neon-green frame, clears the screen when moving between menu choices, and displays a small `bkw` mark beneath each panel. When creating a message, choose its expiration and a filename; if that name already exists, Dead Drop adds a number to avoid overwriting it. The **Open a message** menu can search `.gpg` filenames across mounted filesystem locations, list all `.gpg` files it can find, or open a path directly. Results show full paths and are selected by number. The search skips virtual system folders such as `/proc`, `/sys`, `/dev`, and `/run`, and inaccessible folders are silently skipped.
+
 When creating a message, select an expiration period, type or paste the text, then enter `.END` on its own line. GPG prompts you to set the passphrase. Keep that passphrase separate from the encrypted file when sharing.
 
 ## Expiration limitation
